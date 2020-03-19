@@ -5,9 +5,12 @@ import Speech from 'speak-tts';
 import Sentiment from 'sentiment';
 import happyAudio from '../../public/happy.aac';
 import sadAudio from '../../public/sad.aac';
+import musicAudio from '../../public/music.mp3';
 
 export default class App extends Component {
   state = { poem: null, apiResponseUrl: null, sentimentResultScore: null, poemPrompt: null };
+  volumeFadeOut = null;
+  volumeFadeIn = null;
 
   // componentWillMount() {
   //   fetch('/api/getPoem')
@@ -81,7 +84,6 @@ export default class App extends Component {
   }
 
   enterButtonClicked = () => {
-    console.log(this.state.poemPrompt);
     fetch('/api/getPoem', {
       method: 'POST',
       body: JSON.stringify({ poemPrompt: this.state.poemPrompt }),
@@ -96,12 +98,29 @@ export default class App extends Component {
         let sentimentResult = sentiment.analyze(responseObj.poem);
         let activeAudioElement = null;
         let activeTargetVolume = null;
+        const musicAudioPlayerElement = document.getElementById('musicAudioPlayer');
         const poemTextElement = document.getElementById('poem');
         const poemAudioPlayerElement = document.getElementById('poemAudioPlayer');
         const happyAudioPlayerElement = document.getElementById('happyAudioPlayer');
         const sadAudioPlayerElement = document.getElementById('sadAudioPlayer');
         const bodyElement = document.body;
-        // initialize volume
+        // stop restart interval functions
+        window.clearInterval(this.volumeFadeOut);
+        // pause all
+        musicAudioPlayerElement.pause();
+        poemAudioPlayerElement.pause();
+        happyAudioPlayerElement.pause();
+        sadAudioPlayerElement.pause();
+        // reload
+        musicAudioPlayerElement.load();
+        poemAudioPlayerElement.load();
+        // set all to beginning
+        // musicAudioPlayerElement.currentTime = 0;
+        poemAudioPlayerElement.currentTime = 0;
+        happyAudioPlayerElement.currentTime = 0;
+        sadAudioPlayerElement.currentTime = 0;
+        // set volume
+        musicAudioPlayerElement.volume = 0.4;
         poemAudioPlayerElement.volume = 1;
         happyAudioPlayerElement.volume = 0;
         sadAudioPlayerElement.volume = 0;
@@ -125,6 +144,7 @@ export default class App extends Component {
         }
 
         poemAudioPlayerElement.setAttribute('src', responseObj.apiResponseUrl);
+        setTimeout(() => musicAudioPlayerElement.play(), 3750);
         setTimeout(() => poemAudioPlayerElement.play(), 5000);
         activeAudioElement.play();
 
@@ -132,11 +152,11 @@ export default class App extends Component {
         const intervalMilSec = 100;
         const incrementPercentAmount = activeTargetVolume/(transitionLengthMilSec/intervalMilSec);
 
-        const volumeFadeIn = window.setInterval(() => {
+        this.volumeFadeIn = window.setInterval(() => {
           if (activeAudioElement.volume < activeTargetVolume) {
             activeAudioElement.volume = Math.round(100*(activeAudioElement.volume+incrementPercentAmount))/100;
           } else {
-            window.clearInterval(volumeFadeIn);
+            window.clearInterval(this.volumeFadeIn);
           }
         }, intervalMilSec);
 
@@ -149,6 +169,7 @@ export default class App extends Component {
 
   restart = () => {
     const poemAudioPlayerElement = document.getElementById('poemAudioPlayer');
+    const musicAudioPlayerElement = document.getElementById('musicAudioPlayer');
 
     const activeTargetVolume = 0;
     const transitionLengthMilSec = 1000;
@@ -156,6 +177,7 @@ export default class App extends Component {
     let activeAudioElement;
     let activeDown = false;
     let poemDown = false;
+    let musicDown = false;
 
     if (this.state.sentimentResultScore >= 0) {
       activeAudioElement = document.getElementById('happyAudioPlayer');
@@ -165,8 +187,9 @@ export default class App extends Component {
 
     const incrementPercentAmount = activeAudioElement.volume/(transitionLengthMilSec/intervalMilSec);
     const poemIncrementPercentAmount = poemAudioPlayerElement.volume/(transitionLengthMilSec/intervalMilSec);
+    const musicIncrementPercentAmount = musicAudioPlayerElement.volume/(transitionLengthMilSec/intervalMilSec);
 
-    const volumeFadeOut = window.setInterval(() => {
+    this.volumeFadeOut = window.setInterval(() => {
       if (activeAudioElement.volume > activeTargetVolume) {
         activeAudioElement.volume = Math.round(100*(activeAudioElement.volume-incrementPercentAmount))/100;
       } else if (!activeDown) {
@@ -183,8 +206,16 @@ export default class App extends Component {
         poemDown = true;
       }
 
-      if (activeDown && poemDown) {
-        window.clearInterval(volumeFadeOut);
+      if (musicAudioPlayerElement.volume > activeTargetVolume) {
+        musicAudioPlayerElement.volume = Math.round(100*(musicAudioPlayerElement.volume-musicIncrementPercentAmount))/100;
+      } else if (!poemDown) {
+        musicAudioPlayerElement.pause();
+        musicAudioPlayerElement.currentTime = 0;
+        musicDown = true;
+      }
+
+      if (activeDown && poemDown && musicDown) {
+        window.clearInterval(this.volumeFadeOut);
       }
     }, intervalMilSec);
   };
@@ -216,6 +247,10 @@ export default class App extends Component {
         </svg>
         {/*<button id="enterButton" onClick={() => this.enterButtonClicked()} />*/}
         <input id="input" autoFocus autoComplete="off" onChange={(e) => this.setState({ ...this.state, poemPrompt: e.target.value })}/>
+        <audio id="musicAudioPlayer">
+          <source src="music.mp3" type="audio/mp3" />
+          Your browser does not support the audio element.
+        </audio>
         <audio id="poemAudioPlayer">
           <source src={apiResponseUrl} type="audio/ogg" />
           Your browser does not support the audio element.

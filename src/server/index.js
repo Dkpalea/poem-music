@@ -3,12 +3,18 @@ const fs = require('fs');
 const os = require('os');
 const axios = require('axios');
 const bodyParser =require('body-parser');
+const nocache = require('nocache');
+const serveStatic = require('serve-static')
+
 
 const app = express();
 let poem;
 
 app.use(express.static('dist'));
+app.use(serveStatic('public', {acceptRanges: false}));
 app.use(bodyParser.json());
+app.use(nocache());
+
 app.post('/api/getPoem', (req, res) => {
   console.log(req.body.poemPrompt);
   try {
