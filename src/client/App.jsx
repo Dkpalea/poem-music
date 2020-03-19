@@ -7,7 +7,7 @@ import happyAudio from '../../public/happy.aac';
 import sadAudio from '../../public/sad.aac';
 
 export default class App extends Component {
-  state = { poem: null, apiResponseUrl: null, sentimentResultScore: null };
+  state = { poem: null, apiResponseUrl: null, sentimentResultScore: null, poemPrompt: null };
 
   // componentWillMount() {
   //   fetch('/api/getPoem')
@@ -43,47 +43,150 @@ export default class App extends Component {
   //     });
   // }
 
+  componentDidMount() {
+    const inputElement = document.getElementById('input');
+    const poemTextElement = document.getElementById('poem');
+    const lodingIconElement = document.getElementById('loadingIcon');
+    const bodyElement = document.body;
+    poemTextElement.classList.add('hidden-initial');
+    lodingIconElement.classList.add('hidden-initial');
+    document.addEventListener('keyup', (event) => {
+      if (event.code === 'Enter') {
+        if (document.activeElement === inputElement) {
+          this.enterButtonClicked();
+          inputElement.classList.remove('fadeIn');
+          inputElement.classList.add('fadeOut');
+          inputElement.blur();
+          lodingIconElement.classList.add('fadeIn');
+          lodingIconElement.classList.remove('fadeOut');
+          lodingIconElement.classList.remove('hidden-initial');
+          setTimeout(() => {
+            lodingIconElement.classList.remove('fadeIn');
+            lodingIconElement.classList.add('fadeOut');
+            poemTextElement.classList.add('fadeIn');
+            poemTextElement.classList.remove('fadeOut');
+            poemTextElement.classList.remove('hidden-initial');
+          }, 3000);
+        } else {
+          this.restart();
+          bodyElement.style.backgroundColor = '#ffffff';
+          inputElement.classList.remove('fadeOut');
+          inputElement.classList.add('fadeIn');
+          inputElement.focus();
+          poemTextElement.classList.remove('fadeIn');
+          poemTextElement.classList.add('fadeOut');
+        }
+      }
+    })
+  }
+
   enterButtonClicked = () => {
-    console.log('clicked');
-    fetch('/api/getPoem')
+    console.log(this.state.poemPrompt);
+    fetch('/api/getPoem', {
+      method: 'POST',
+      body: JSON.stringify({ poemPrompt: this.state.poemPrompt }),
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    })
       .then(res => res.json())
       .then(responseObj => {
         let sentiment = new Sentiment();
         let sentimentResult = sentiment.analyze(responseObj.poem);
         let activeAudioElement = null;
         let activeTargetVolume = null;
+        const poemTextElement = document.getElementById('poem');
+        const poemAudioPlayerElement = document.getElementById('poemAudioPlayer');
         const happyAudioPlayerElement = document.getElementById('happyAudioPlayer');
         const sadAudioPlayerElement = document.getElementById('sadAudioPlayer');
-        // initialize volume to 0
+        const bodyElement = document.body;
+        // initialize volume
+        poemAudioPlayerElement.volume = 1;
         happyAudioPlayerElement.volume = 0;
         sadAudioPlayerElement.volume = 0;
 
         if (sentimentResult.score >= 0) {
+          // happy
           activeAudioElement = happyAudioPlayerElement;
-          activeTargetVolume = 0.2;
+          activeTargetVolume = 0.3;
+          // change bg color
+          bodyElement.style.backgroundColor = '#ffea6c';
+          // change text color
+          poemTextElement.style.color = '#1a1a1a';
         } else {
+          // sad
           activeAudioElement = sadAudioPlayerElement;
           activeTargetVolume = 0.2;
+          // change bg color
+          bodyElement.style.backgroundColor = '#2c345c';
+          // change text color
+          poemTextElement.style.color = '#eeeeee';
         }
 
-        const transitionLengthMilSec = 2500;
+        poemAudioPlayerElement.setAttribute('src', responseObj.apiResponseUrl);
+        setTimeout(() => poemAudioPlayerElement.play(), 5000);
+        activeAudioElement.play();
+
+        const transitionLengthMilSec = 5000;
         const intervalMilSec = 100;
         const incrementPercentAmount = activeTargetVolume/(transitionLengthMilSec/intervalMilSec);
-        console.log(activeAudioElement.volume);
 
-        const increaseVol = () => {
+        const volumeFadeIn = window.setInterval(() => {
           if (activeAudioElement.volume < activeTargetVolume) {
-            activeAudioElement.volume += incrementPercentAmount;
-            console.log(activeAudioElement.volume);
+            activeAudioElement.volume = Math.round(100*(activeAudioElement.volume+incrementPercentAmount))/100;
           } else {
-            volumeFadeIn.clearInterval();
+            window.clearInterval(volumeFadeIn);
           }
-        };
-
-        const volumeFadeIn = setInterval(increaseVol(), intervalMilSec);
+        }, intervalMilSec);
 
         this.setState({...responseObj, sentimentResultScore: sentimentResult.score}, () => console.log(this.state));
       });
+  };
+
+
+
+
+  restart = () => {
+    const poemAudioPlayerElement = document.getElementById('poemAudioPlayer');
+
+    const activeTargetVolume = 0;
+    const transitionLengthMilSec = 1000;
+    const intervalMilSec = 100;
+    let activeAudioElement;
+    let activeDown = false;
+    let poemDown = false;
+
+    if (this.state.sentimentResultScore >= 0) {
+      activeAudioElement = document.getElementById('happyAudioPlayer');
+    } else {
+      activeAudioElement = document.getElementById('sadAudioPlayer');
+    }
+
+    const incrementPercentAmount = activeAudioElement.volume/(transitionLengthMilSec/intervalMilSec);
+    const poemIncrementPercentAmount = poemAudioPlayerElement.volume/(transitionLengthMilSec/intervalMilSec);
+
+    const volumeFadeOut = window.setInterval(() => {
+      if (activeAudioElement.volume > activeTargetVolume) {
+        activeAudioElement.volume = Math.round(100*(activeAudioElement.volume-incrementPercentAmount))/100;
+      } else if (!activeDown) {
+        activeAudioElement.pause();
+        activeAudioElement.currentTime = 0;
+        activeDown = true;
+      }
+
+      if (poemAudioPlayerElement.volume > activeTargetVolume) {
+        poemAudioPlayerElement.volume = Math.round(100*(poemAudioPlayerElement.volume-poemIncrementPercentAmount))/100;
+      } else if (!poemDown) {
+        poemAudioPlayerElement.pause();
+        poemAudioPlayerElement.currentTime = 0;
+        poemDown = true;
+      }
+
+      if (activeDown && poemDown) {
+        window.clearInterval(volumeFadeOut);
+      }
+    }, intervalMilSec);
   };
 
   render() {
@@ -91,16 +194,17 @@ export default class App extends Component {
     var isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
 
     if(!isChrome) {
+      console.log('Env Not Chrome! :(');
       document.getElementsByClassName('infinityChrome')[0].style.display = "none";
       document.getElementsByClassName('infinity')[0].style.display = "block";
     }
     return (
       <div>
-        {/*<div className="infinityChrome">*/}
-        {/*  <div></div>*/}
-        {/*  <div></div>*/}
-        {/*  <div></div>*/}
-        {/*</div>*/}
+        <div id="loadingIcon" className="infinityChrome">
+          <div></div>
+          <div></div>
+          <div></div>
+        </div>
         <svg xmlns="http://www.w3.org/2000/svg" version="1.1" style={{display : 'none'}}>
           <defs>
             <filter id="goo">
@@ -110,8 +214,8 @@ export default class App extends Component {
             </filter>
           </defs>
         </svg>
-        <button id="enterButton" onClick={() => this.enterButtonClicked()} />
-        <input autoFocus/>
+        {/*<button id="enterButton" onClick={() => this.enterButtonClicked()} />*/}
+        <input id="input" autoFocus autoComplete="off" onChange={(e) => this.setState({ ...this.state, poemPrompt: e.target.value })}/>
         <audio id="poemAudioPlayer">
           <source src={apiResponseUrl} type="audio/ogg" />
           Your browser does not support the audio element.
@@ -124,7 +228,7 @@ export default class App extends Component {
           <source src={sadAudio} type="audio/aac" />
           Your browser does not support the audio element.
         </audio>
-        {poem ? <p>{poem}</p> : null}
+        <p id="poem">{poem}</p>
       </div>
     );
   }
